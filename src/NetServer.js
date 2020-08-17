@@ -1,47 +1,46 @@
 /* 
-    PROTOCOL:
-    COMMAND_HEADER {header,argCount} |****| ARG {DATA..} |****| RESPONSE {status}
-    
-    COMANDOS
-    SERVIDOR:
-    SUBSCRIBE {USERTOKEN}
-    UNSUBSCRIBE {USERTOKEN}
-    SEND_TO_POOL {DATA},POOL_ID
-    START_POOL {DATA}
-    REMOVE_POOL {DATA}
-    GET_LOOBY
+    //NET SERVER SPEC DRAFT 1.0 (NO SECURITY FEATURES)
 
-    CLIENTE:
-    UPDATE {PROPERTY_ID,{value}}
-    REMOVED_FROM_POOL {MSG}
-    REMOVE   {PROPERTY_ID}
-    SPAWN {PROPERTY_NAME}
+    ----PROTOCOL:
+    COMMAND_HEADER {header,payload}
+
+    ----SERVER COMMANDS:
+    --SERVER CONTROL COMMANDS:
+        SUBSCRIBE {PlayerName,HostName,IpAddress,port};
+        UNSUBSCRIBE {POOL_ID}
+        START_POOL {DATA}
+        END_POOL {DATA}
+    --DATA STREAMING/BROADCASTING COMMANDS (both sides commands):
+        UPSERT {PROPERTY_ID,{value}}; RESPONSE TO CLIENT: {propertyName, newValue}
+        REMOVE   {PROPERTY_ID}; RESPONSE TO CLIENT : {propertyName}   
+        SPAWN {PREFAB_NAME,TRANSFORM{VECTOR3,QUATERNION}}; RESPONSE TO CLIENT :{propertyName}
+    --REQUEST COMMANDS 
+        GET_ACTIVE_POOLS; RESPONSE TO CLIENT : {pools[]}  
 */
-
-
-
 
 const MAX_CLIENTS = 128;
 var poolObject = { keys: [], values: [] };
-var poolsInstances = { pools: [{ poolId: 0, pool: Object.assign(pool,poolObject )}] }; //HAS A DEFAULT INSTANCE FOR BROADCAST MESSAGES
+var poolsInstances = { pools: [{ poolId: 0, pool: Object.assign(pool, poolObject) }] }; //HAS A DEFAULT INSTANCE FOR BROADCAST MESSAGES
 var connectedClients = [];
 var serverCommands = [];
-
-
-
-//SYSTEM CALLS
+var commandQueue = []; // {COMMAND_HEADER,CLIENT} CONTINUAR AQUI!!!
 
 function executeCommand(command) {
-    let cmd = serverCommands[command.header];
-    if (!!cmd) {
-        console.log(cmd);
-        cmd.execute();
+    try {
+        let command = JSON.parse(command);
+        let cmd = serverCommands[command.header];
+        if (!!cmd) {
+            console.log(cmd);
+            let args = JSON.parse(command.payload);
+            cmd.execute(args);
+        }
+    } catch (error) {
+        console.log("CORRUPT DATA FORMAT RECIVED; LOG:", error);
     }
 }
 
-
-function dispatchDataToClients()
-{
+function dispatchDataToClients() {
+    //Dispatch all the commands in the queue
     
 }
 
@@ -54,20 +53,43 @@ function tickExecution() {
 }
 
 //COMMANDS DEFINITIONS
-function addClient(client) {
+function addClient(args) {
     if (connectedClients.length < MAX_CLIENTS) {
-        connectedClients.push(client);
+        connectedClients.push(args);
     }
 }
 
-function removeClient(client) {
+function removeClient(args) {
     connectedClients = connectedClients.filter((e) => {
         return e.hostName != client.hostName;
     })
 }
 
-function startPool()
+
+function startPool(args) {
+
+}
+
+function endPool(args) {
+
+}
+
+function upsertProperty(args)
 {
+
+}
+
+function removeProperty(args)
+{
+
+}
+
+function spawnObject(args)
+{
+
+}
+
+function getActivePools(args) {
 
 }
 
@@ -75,6 +97,12 @@ function startPool()
 function initialize() {
     serverCommands.push({ header: "SUBSCRIBE", command: addClient });
     serverCommands.push({ header: "UNSUBSCRIBE", command: removeClient });
+    serverCommands.push({ header: "START_POOL", command: startPool });
+    serverCommands.push({ header: "END_POOL", command: endPool });
+    serverCommands.push({ header: "UPSERT", command: upsertProperty });
+    serverCommands.push({ header: "REMOVE", command: removeProperty });
+    serverCommands.push({ header: "SPAWN", command: spawnObject });
+    serverCommands.push({ header: "GET_ACTIVE_POOLS", command: getActivePools });
 }
 
 module.exports.executeCommand = executeCommand;
