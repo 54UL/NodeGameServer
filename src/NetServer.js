@@ -41,7 +41,7 @@ var commandQueue = [];
 var serverTicks = 0;
 var udpServer = null;
 
-function executeCommand(command) {
+function executeCommand(command,endpoint) {
     try {
         let incomingCommand = JSON.parse(command);
         let cmd = serverCommands.find((e) => {
@@ -49,14 +49,19 @@ function executeCommand(command) {
         })
         if (!!cmd) {
             let args = null;
-            if (incomingCommand.payload != '')
+            if (incomingCommand.payload != ''){
                 args = JSON.parse(incomingCommand.payload);
+                args['clientInfo'] = endpoint;
+            }
             cmd.evalute(args);
+            console.log("SERVER COMMAND::::"+command);
         }
     } catch (error) {
         console.log("CORRUPT DATA FORMAT RECIVED; LOG:", error);
     }
 }
+
+
 
 //ocket.send(msg: string | any[] | Uint8Array, port?: number, address?: string, callback?: (error: Error, bytes: number) => void): void (+5 overloads
 function dispatchDataToClients() {
@@ -65,8 +70,8 @@ function dispatchDataToClients() {
     connectedClients.forEach(client => {
         let peek = commandQueueCopy.pop();
         var dataToSend = new Buffer(JSON.stringify(peek), 'utf8');
-        udpServer.send(dataToSend, client.Port, client.IpAddress, (err, number) => {
-            console.log(err, 'bytes:' + number);
+        udpServer.send(dataToSend, 8091, client.clientInfo.address, (err, number) => {
+            console.log("SERVER REPLY:::"+JSON.stringify(peek),"packet size: "+number);
         })
     });
     commandQueue.pop();
@@ -94,7 +99,8 @@ function addClient(args) {
     // });
     if (args.IpAddress == "")
         return;
-
+    args.IpAddress = args.clientInfo.address;
+    args.Port = args.clientInfo.port;
     if (connectedClients.length < MAX_CLIENTS) {
         connectedClients.push(args);
         console.log("client connected (" + args.IpAddress + ")");
@@ -106,7 +112,7 @@ function removeClient(args) {
         return;
 
     connectedClients = connectedClients.filter((e) => {
-        return e.HostName != client.HostName;
+        return e.IpAddress != args.IpAddress;
     })
 }
 
