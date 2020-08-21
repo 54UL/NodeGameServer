@@ -9,7 +9,6 @@ server.on('error', (err) => {
 });
 
 server.on('message', (msg, rinfo) => {
-    // console.log(`server got: ${msg} from ${rinfo.address}:${rinfo.port}`);
     netServer.executeCommand(msg.toString(),rinfo);
 });
 
