@@ -20,7 +20,7 @@
 */
 
 const MAX_CLIENTS = 128; // max number of upd conections
-const DISPATCH_INTERVAL = 16; // dispatching delay(each N ms sends commands to clients) 
+const DISPATCH_INTERVAL = 0; // dispatching delay(each N ms sends commands to clients) 
 
 class pool {
     constructor(poolId, name) {
@@ -39,9 +39,21 @@ var serverTicks = 0;
 var udpServer = null;
 var clientIdIndex = 64;
 
+function getCommandInfo(clientId) {
+    if (connectedClients != undefined) {
+        let commandOwner = connectedClients.find((e) => {
+            return e.userId == clientId;
+        });
+        return commandOwner;
+    }
+    else
+        return null;
+}
+
 function executeCommand(command, endpoint) {
+    let args = null;
+    let commandInfo = null;
     try {
-        let args = null;
         let incomingCommand = JSON.parse(command);
         let cmd = serverCommands.find((e) => {
             return incomingCommand.header == e.header;
@@ -52,8 +64,11 @@ function executeCommand(command, endpoint) {
             }
             else
                 args = {};
+                
+            commandInfo = getCommandInfo(incomingCommand.clientId);
+            if (commandInfo != null)
+                args['clientInfo'] = commandInfo;
 
-            args['clientInfo'] = endpoint;
             cmd.evalute(args);
             if (cmd.header != "UPSERT") {
                 console.log("SERVER COMMAND::::" + command);
@@ -64,32 +79,34 @@ function executeCommand(command, endpoint) {
     }
 }
 
-//Header, Payload, Owner, Broadcast
 function pushCommand(command) {
     let jsonData = JSON.stringify(command.Payload);
-    let commandObj = { header: command.Header, payload: jsonData, owner: command.Owner, broadcast: command.Broadcast };
+    let commandObj = {
+        header: command.Header,
+        payload: jsonData,
+        owner: command.owner,
+        broadcast: command.Broadcast
+    };
     commandQueue.push(commandObj);
 }
-
 
 //si es broadcast, evitar que se envie el valor al dueño de la peticion, si no es broadcast mandar unicamente al dueño (para respuestas directas)
 function shouldSendData(command, client) {
     if (command.broadcast)
-        return client.clientInfo.address != command.owner.address || client.clientInfo.port != command.owner.port
+        return command.owner.userId != client.userId;
     else
-        return client.clientInfo.address == command.owner.address && client.clientInfo.port == command.owner.port
+        return command.owner.userId == client.userId;
 }
 
-//socket.send(msg: string | any[] | Uint8Array, port?: number, address?: string, callback?: (error: Error, bytes: number) => void): void (+5 overloads
 function dispatchDataToClients() {
     //Dispatch all the commands in the queue
-    let commandQueueCopy = [...commandQueue];
     connectedClients.forEach(client => {
+        let commandQueueCopy =  [...commandQueue];
         let peek = commandQueueCopy.pop();
         if (peek != undefined && shouldSendData(peek, client)) {
-            peek = { header: peek.header, payload: peek.payload };
+            peek = { header: peek.header, payload: peek.payload };// sanitization of the data
             var dataToSend = new Buffer(JSON.stringify(peek), 'utf8');
-            udpServer.send(dataToSend, client.Port, client.clientInfo.address, (err, number) => {
+            udpServer.send(dataToSend, client.Port, client.IpAddress, (err, number) => {
                 if (peek.header != "UPPSERT")
                     console.log("SERVER REPLY:::" + JSON.stringify(peek), "packet size: " + number);
             })
@@ -115,26 +132,23 @@ function startDispatching() {
 
 //COMMANDS DEFINITIONS
 function addClient(args) {
-    // var exists = connectedClients.find((e) => {
-    //     return e.ipAddress == args.ipAddress
-    // });
     if (args.IpAddress == "")
         return;
-    args.IpAddress = args.clientInfo.address;
 
     if (connectedClients.length < MAX_CLIENTS) {
         args['userId'] = clientIdIndex++;
         connectedClients.push(args);
-
         var clientInfoArgs = { ClientId: args['userId'], AccesToken: "NULL" }
+
         let commandArg = {
             Header: "CLIENT_INFO",
             Payload: clientInfoArgs,
-            Owner: args.clientInfo,
+            owner: args,
             Broadcast: false
         }
+
         pushCommand(commandArg);
-        console.log("client connected (" + args.IpAddress + ")");
+        console.log("client connected " + args.IpAddress + " port: " + args.Port);
     }
 }
 
@@ -167,14 +181,11 @@ function upsertProperty(args) {
     try {
         let dataMap = testDataMap;
         dataMap.set(args.Key, args.Value);
-        let sanitizedDataMap = [];
-        dataMap.forEach((val, key) => {
-            sanitizedDataMap.push({ Key: key, Value: val.poolName })
-        });
+        let UppsertArgs = { Key: args.Key, Value: args.Value };
         let commandArg = {
             Header: "UPPSERT",
-            Payload: sanitizedDataMap,
-            Owner: args.clientInfo,
+            Payload: UppsertArgs,
+            owner: args.clientInfo,
             Broadcast: true
         }
         pushCommand(commandArg);
@@ -194,7 +205,7 @@ function spawnObject(args) {
     let commandArg = {
         Header: "SPAWN",
         Payload: spawnArgs,
-        Owner: args.clientInfo,
+        owner: args.clientInfo,
         Broadcast: true
     }
     pushCommand(commandArg);
@@ -208,12 +219,11 @@ function getActivePools(args) {
     let commandArg = {
         Header: "GET_POOLS",
         Payload: { pools: sanitizedPools },
-        Owner: args.clientInfo,
+        owner: args.clientInfo,
         Broadcast: false
     }
     pushCommand(commandArg);
 }
-
 
 function initialize(server) {
     udpServer = server;
@@ -227,6 +237,7 @@ function initialize(server) {
     serverCommands.push({ header: "GET_ACTIVE_POOLS", evalute: getActivePools });
     startDispatching();
     startPool({ PoolName: "DEFAULT POOL" })
+    console.log("server initialized...");
 }
 
 module.exports.executeCommand = executeCommand;
