@@ -1,0 +1,19 @@
+{
+  "name": "nodegameserver",
+  "version": "1.0.0",
+  "description": "Simple udp game server",
+  "main": "Server.js",
+  "scripts": {
+    "test": "echo \"Error: no test specified\" && exit 1"
+  },
+  "repository": {
+    "type": "git",
+    "url": "git+https://github.com/54UL/NodeGameServer.git"
+  },
+  "author": "Saul aceves montes",
+  "license": "ISC",
+  "bugs": {
+    "url": "https://github.com/54UL/NodeGameServer/issues"
+  },
+  "homepage": "https://github.com/54UL/NodeGameServer#readme"
+}
