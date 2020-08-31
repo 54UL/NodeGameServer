@@ -17,4 +17,4 @@ server.on('listening', () => {
     console.log(`server listening ${address.address}:${address.port}`);
     netServer.initialize(server);
 });
-server.bind(SERVER_PORT);
+server.bind(process.env.PORT);
