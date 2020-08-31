@@ -4,7 +4,7 @@
   "description": "Simple udp game server",
   "main": "Server.js",
   "scripts": {
-    "start": "./Server.js"
+    "start": "./src/Server.js"
   },
   "repository": {
     "type": "git",
