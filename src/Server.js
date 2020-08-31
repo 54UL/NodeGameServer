@@ -1,7 +1,7 @@
 const dgram = require('dgram');
 const server = dgram.createSocket('udp4');
 const netServer = require('./NetServer');
-const SERVER_PORT = 80
+const SERVER_PORT = 8090
 
 server.on('error', (err) => {
     console.log(`server error:\n${err.stack}`);
