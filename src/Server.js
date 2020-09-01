@@ -11,7 +11,7 @@ server.on('error', (err) => {
 });
 
 server.on('message', (msg, rinfo) => {
-    netServer.executeCommand(msg.toString(),rinfo);
+    netServer.executeCommand(msg.toString(), rinfo);
 });
 
 server.on('listening', () => {
@@ -19,4 +19,9 @@ server.on('listening', () => {
     console.log(`server listening ${address.address}:${address.port}`);
     netServer.initialize(server);
 });
-server.bind(process.env.port,SERVER_ADDRESS);
+
+socket.bind({
+    address: SERVER_ADDRESS,
+    port: process.env.port,
+    exclusive: true
+});
