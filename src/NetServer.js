@@ -21,6 +21,8 @@
 
 const MAX_CLIENTS = 128; // max number of upd conections
 const DISPATCH_INTERVAL = 0; // dispatching delay(each N ms sends commands to clients) 
+const NS_PER_MS = 1e6;
+var beginUpsertPropertyTime = null;
 
 class pool {
     constructor(poolId, name) {
@@ -64,7 +66,7 @@ function executeCommand(command, endpoint) {
             }
             else
                 args = {};
-                
+
             commandInfo = getCommandInfo(incomingCommand.clientId);
             if (commandInfo != null)
                 args['clientInfo'] = commandInfo;
@@ -88,6 +90,9 @@ function pushCommand(command) {
         broadcast: command.Broadcast
     };
     commandQueue.push(commandObj);
+    if (connectedClients.length > 0) {
+        dispatchDataToClients();
+    }
 }
 
 //si es broadcast, evitar que se envie el valor al dueño de la peticion, si no es broadcast mandar unicamente al dueño (para respuestas directas)
@@ -101,14 +106,19 @@ function shouldSendData(command, client) {
 function dispatchDataToClients() {
     //Dispatch all the commands in the queue
     connectedClients.forEach(client => {
-        let commandQueueCopy =  [...commandQueue];
+        let commandQueueCopy = [...commandQueue];
         let peek = commandQueueCopy.pop();
         if (peek != undefined && shouldSendData(peek, client)) {
             peek = { header: peek.header, payload: peek.payload };// sanitization of the data
             var dataToSend = new Buffer(JSON.stringify(peek), 'utf8');
             udpServer.send(dataToSend, client.Port, client.IpAddress, (err, number) => {
-                if (peek.header != "UPPSERT")
+                if (peek.header != "UPPSERT") {
                     console.log("SERVER REPLY:::" + JSON.stringify(peek), "packet size: " + number);
+                }
+                else {
+                    var end = process.hrtime(beginUpsertPropertyTime);
+                    console.log("[UPPSERT TIME :" + end[1] / NS_PER_MS + "ms  ]")
+                }
             })
         }
     });
@@ -120,15 +130,6 @@ function debugInfo() {
     console.log(" tick " + serverTicks);
 }
 
-function startDispatching() {
-    setInterval(() => {
-        //send pendient data
-        if (commandQueue.length > 0 && connectedClients.length > 0) {
-            dispatchDataToClients();
-        }
-        //debugInfo();
-    }, DISPATCH_INTERVAL);
-}
 
 //COMMANDS DEFINITIONS
 function addClient(args) {
@@ -177,8 +178,10 @@ function endPool(args) {
 }
 
 var testDataMap = new Map();
+
 function upsertProperty(args) {
     try {
+        beginUpsertPropertyTime = process.hrtime();
         let dataMap = testDataMap;
         dataMap.set(args.Key, args.Value);
         let UppsertArgs = { Key: args.Key, Value: args.Value };
@@ -235,8 +238,8 @@ function initialize(server) {
     serverCommands.push({ header: "REMOVE", evalute: removeProperty });
     serverCommands.push({ header: "SPAWN", evalute: spawnObject });
     serverCommands.push({ header: "GET_ACTIVE_POOLS", evalute: getActivePools });
-    startDispatching();
     startPool({ PoolName: "DEFAULT POOL" })
+    //startDispatching();
     console.log("server initialized...");
 }
 
