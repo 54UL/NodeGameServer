@@ -3,7 +3,7 @@ const server = dgram.createSocket('udp4');
 const netServer = require('./NetServer');
 const { env } = require('process');
 const SERVER_PORT = 8090
-const SERVER_ADDRESS = "34.121.82.152";
+const SERVER_ADDRESS = "192.168.0.104";
 
 server.on('error', (err) => {
     console.log(`server error:\n${err.stack}`);
@@ -20,8 +20,9 @@ server.on('listening', () => {
     netServer.initialize(server);
 });
 
-socket.bind({
+server.bind({
     address: SERVER_ADDRESS,
-    port: process.env.port,
+    // port: process.env.port,
+    port: "5140",
     exclusive: true
 });

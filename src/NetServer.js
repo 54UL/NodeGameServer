@@ -15,7 +15,6 @@
         SPAWN {PREFAB_NAME,TRANSFORM{VECTOR3,QUATERNION}}; RESPONSE TO CLIENT :{propertyName}
     --REQUEST COMMANDS 
         GET_ACTIVE_POOLS; RESPONSE TO CLIENT : {pools[]}  
-
         ACKNOLEDGE RESPONSE FOT BOTH SIDES...
 */
 
@@ -40,6 +39,8 @@ var commandQueue = [];
 var serverTicks = 0;
 var udpServer = null;
 var clientIdIndex = 64;
+var spawnedObjects = [];
+var lastSendServerTick = 0;
 
 function getCommandInfo(clientId) {
     if (connectedClients != undefined) {
@@ -90,9 +91,6 @@ function pushCommand(command) {
         broadcast: command.Broadcast
     };
     commandQueue.push(commandObj);
-    if (connectedClients.length > 0) {
-        dispatchDataToClients();
-    }
 }
 
 //si es broadcast, evitar que se envie el valor al dueño de la peticion, si no es broadcast mandar unicamente al dueño (para respuestas directas)
@@ -103,6 +101,7 @@ function shouldSendData(command, client) {
         return command.owner.userId == client.userId;
 }
 
+
 function dispatchDataToClients() {
     //Dispatch all the commands in the queue
     connectedClients.forEach(client => {
@@ -111,13 +110,15 @@ function dispatchDataToClients() {
         if (peek != undefined && shouldSendData(peek, client)) {
             peek = { header: peek.header, payload: peek.payload };// sanitization of the data
             var dataToSend = new Buffer(JSON.stringify(peek), 'utf8');
+
             udpServer.send(dataToSend, client.Port, client.IpAddress, (err, number) => {
                 if (peek.header != "UPPSERT") {
                     console.log("SERVER REPLY:::" + JSON.stringify(peek), "packet size: " + number);
                 }
                 else {
                     var end = process.hrtime(beginUpsertPropertyTime);
-                    console.log("[UPPSERT TIME :" + end[1] / NS_PER_MS + "ms  ]")
+                    // console.log("[UPPSERT RESPONSE TIME(SERVER->CLIENT): " + end[1] / NS_PER_MS + "ms  ]")
+                    console.log("[UPPSERT DATA TO  " + connectedClients.length + " CLIENTS AT SERVER TICK" + serverTicks+" | CLIENT PORT:"+client.Port);
                 }
             })
         }
@@ -126,10 +127,8 @@ function dispatchDataToClients() {
 }
 
 function debugInfo() {
-    serverTicks++;
-    console.log(" tick " + serverTicks);
+    console.log(" [SERVER TICK COUNT:::::+[" + serverTicks + "]");
 }
-
 
 //COMMANDS DEFINITIONS
 function addClient(args) {
@@ -139,8 +138,8 @@ function addClient(args) {
     if (connectedClients.length < MAX_CLIENTS) {
         args['userId'] = clientIdIndex++;
         connectedClients.push(args);
-        var clientInfoArgs = { ClientId: args['userId'], AccesToken: "NULL" }
 
+        var clientInfoArgs = { ClientId: args['userId'], AccesToken: "NULL", SpawnedEntities: spawnedObjects }
         let commandArg = {
             Header: "CLIENT_INFO",
             Payload: clientInfoArgs,
@@ -158,8 +157,14 @@ function removeClient(args) {
         return;
 
     connectedClients = connectedClients.filter((e) => {
-        return e.IpAddress != args.IpAddress;
+        return e.PlayerId != args.PlayerId;
     })
+    console.log("spawn list after", spawnedObjects);
+    spawnedObjects = spawnedObjects.filter((e) => {
+        return e.PlayerId != args.PlayerId;
+    });
+    console.log("spawn list before", spawnedObjects);
+
 }
 
 function startPool(args) {
@@ -201,6 +206,7 @@ function removeProperty(args) {
 
 }
 
+
 function spawnObject(args) {
     if (args.PrefabName.trim() == "")
         return;
@@ -211,6 +217,7 @@ function spawnObject(args) {
         owner: args.clientInfo,
         Broadcast: true
     }
+    spawnedObjects.push(spawnArgs);
     pushCommand(commandArg);
 }
 
@@ -228,6 +235,7 @@ function getActivePools(args) {
     pushCommand(commandArg);
 }
 
+//refactor aca abajo ;v
 function initialize(server) {
     udpServer = server;
     serverCommands.push({ header: "SUBSCRIBE", evalute: addClient });
@@ -239,8 +247,15 @@ function initialize(server) {
     serverCommands.push({ header: "SPAWN", evalute: spawnObject });
     serverCommands.push({ header: "GET_ACTIVE_POOLS", evalute: getActivePools });
     startPool({ PoolName: "DEFAULT POOL" })
-    //startDispatching();
     console.log("server initialized...");
+    setInterval(() => {
+        if (connectedClients.length > 0) {
+            dispatchDataToClients();
+            debugInfo();
+            lastSendServerTick = serverTicks;
+            serverTicks++;
+        }
+    }, 16);
 }
 
 module.exports.executeCommand = executeCommand;
